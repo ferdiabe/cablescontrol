@@ -1,0 +1,43 @@
+services:
+  controle-cabos-backend:
+    build: ./backend
+    container_name: controle-cabos-backend
+    restart: unless-stopped
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=sqlite:///app/database/controle_cabos.db
+      - UPLOAD_FOLDER=/app/uploads
+      - SECRET_KEY=controle-cabos-secret-key-2025
+    volumes:
+      - backend_data:/app/database
+      - ./data/uploads:/app/uploads
+      - ./data/logs:/app/logs
+    networks:
+      - iot-network
+    deploy:
+      resources:
+        limits:
+          memory: 400M
+        reservations:
+          memory: 200M
+
+  controle-cabos-frontend:
+    build: ./frontend
+    container_name: controle-cabos-frontend
+    restart: unless-stopped
+    networks:
+      - iot-network
+
+  controle-cabos-mobile:
+    build: ./mobile
+    container_name: controle-cabos-mobile
+    restart: unless-stopped
+    networks:
+      - iot-network
+
+networks:
+  iot-network:
+    external: true
+
+volumes:
+  backend_data:

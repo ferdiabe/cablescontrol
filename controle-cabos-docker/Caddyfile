@@ -1,0 +1,41 @@
+cabos.avaut.com.br {
+    # Mobile com todos os assets
+    route /mobile* {
+        reverse_proxy controle-cabos-mobile:80
+    }
+    
+    # Assets - tentar mobile primeiro para arquivos específicos
+    route /assets/index-5538fb62.js {
+        reverse_proxy controle-cabos-mobile:80
+    }
+    
+    route /assets/index-69987dab.css {
+        reverse_proxy controle-cabos-mobile:80
+    }
+    
+    # Assets do frontend
+    route /assets/* {
+        reverse_proxy controle-cabos-frontend:80
+    }
+    
+    route /api/* {
+        reverse_proxy controle-cabos-backend:5002
+    }
+    
+    route / {
+        reverse_proxy controle-cabos-frontend:80
+    }
+}
+
+iot.avaut.com.br {
+    route / {
+        respond "<h1>Sistema IoT</h1><a href='https://cabos.avaut.com.br'>Cabos</a>" 200
+    }
+    route /node-red/* {
+        reverse_proxy node-red:1880
+    }
+}
+
+:1880 {
+    reverse_proxy node-red:1880
+}
