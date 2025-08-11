@@ -3,6 +3,7 @@ from flask_cors import CORS
 import os
 import sqlite3
 from datetime import datetime
+import qrcode
 
 app = Flask(__name__)
 CORS(app)
@@ -14,6 +15,16 @@ UPLOAD_FOLDER = '/app/uploads'
 # Criar diretórios se não existirem
 os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+def generate_qrcode(text):
+    """Generate QR code image for given text and return file path"""
+    filename = f"{text}.png"
+    path = os.path.join(UPLOAD_FOLDER, filename)
+    if not os.path.exists(path):
+        img = qrcode.make(text)
+        img.save(path)
+    return path
 
 def init_db():
     """Inicializar banco de dados"""
@@ -227,12 +238,142 @@ def create_caixa():
             INSERT INTO caixas (numero, tipo_cabo_id, quantidade_inicial, quantidade_atual, status)
             VALUES (?, ?, ?, ?, ?)
         ''', (numero, data['tipo_cabo_id'], data['quantidade_inicial'], data['quantidade_inicial'], 'nova'))
-        
+
         caixa_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        
+
+        # Gerar QR Code
+        generate_qrcode(numero)
+
         return jsonify({'id': caixa_id, 'numero': numero, 'message': 'Caixa criada com sucesso'}), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/caixas/buscar/<string:numero>', methods=['GET'])
+def buscar_caixa(numero):
+    """Buscar caixa pelo número"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT c.*, tc.nome as tipo_nome, tc.prefixo
+            FROM caixas c
+            LEFT JOIN tipos_cabo tc ON c.tipo_cabo_id = tc.id
+            WHERE c.numero = ?
+        ''', (numero.upper(),))
+        caixa = cursor.fetchone()
+        conn.close()
+
+        if not caixa:
+            return jsonify({'error': 'Caixa não encontrada'}), 404
+
+        result = {
+            'id': caixa[0],
+            'numero': caixa[1],
+            'tipo_cabo_id': caixa[2],
+            'quantidade_inicial': caixa[3],
+            'quantidade_atual': caixa[4],
+            'status': caixa[5],
+            'tipo_nome': caixa[7] if len(caixa) > 7 else None,
+            'prefixo': caixa[8] if len(caixa) > 8 else None
+        }
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/caixas/<int:caixa_id>/abrir', methods=['POST'])
+def abrir_caixa(caixa_id):
+    """Abrir caixa para uso"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT status FROM caixas WHERE id = ?', (caixa_id,))
+        caixa = cursor.fetchone()
+
+        if not caixa:
+            conn.close()
+            return jsonify({'error': 'Caixa não encontrada'}), 404
+
+        if caixa[0] not in ('nova', 'fechada'):
+            conn.close()
+            return jsonify({'error': 'Caixa não pode ser aberta'}), 400
+
+        cursor.execute('UPDATE caixas SET status = ? WHERE id = ?', ('aberta', caixa_id))
+        conn.commit()
+        conn.close()
+
+        return jsonify({'message': 'Caixa aberta com sucesso'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/caixas/<int:caixa_id>/fechar', methods=['POST'])
+def fechar_caixa(caixa_id):
+    """Fechar caixa após uso e registrar quantidade utilizada"""
+    try:
+        data = request.get_json()
+        quantidade_final = float(data['quantidade_final'])
+        projeto_id = data['projeto_id']
+        tecnico = data['tecnico_responsavel']
+        observacoes = data.get('observacoes', '')
+
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT quantidade_atual FROM caixas WHERE id = ?', (caixa_id,))
+        caixa = cursor.fetchone()
+
+        if not caixa:
+            conn.close()
+            return jsonify({'error': 'Caixa não encontrada'}), 404
+
+        quantidade_atual = caixa[0]
+        quantidade_usada = quantidade_atual - quantidade_final
+
+        if quantidade_usada < 0:
+            conn.close()
+            return jsonify({'error': 'Quantidade final maior que quantidade atual'}), 400
+
+        status = 'fechada'
+        if quantidade_final <= 0:
+            status = 'encerrada'
+
+        cursor.execute('UPDATE caixas SET quantidade_atual = ?, status = ? WHERE id = ?',
+                       (quantidade_final, status, caixa_id))
+        cursor.execute('''
+            INSERT INTO usos (caixa_id, projeto_id, quantidade_usada, tecnico_responsavel, observacoes)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (caixa_id, projeto_id, quantidade_usada, tecnico, observacoes))
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'message': 'Caixa fechada com sucesso',
+            'quantidade_usada': quantidade_usada,
+            'status': status
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/caixas/<int:caixa_id>/qrcode', methods=['GET'])
+def get_caixa_qrcode(caixa_id):
+    """Obter QR Code da caixa"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT numero FROM caixas WHERE id = ?', (caixa_id,))
+        caixa = cursor.fetchone()
+        conn.close()
+
+        if not caixa:
+            return jsonify({'error': 'Caixa não encontrada'}), 404
+
+        path = generate_qrcode(caixa[0])
+        return send_file(path, mimetype='image/png')
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
