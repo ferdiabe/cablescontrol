@@ -184,9 +184,10 @@ function App() {
           {caixas.map(caixa => (
             <div key={caixa.id} className="item-card">
               <h3>{caixa.numero}</h3>
-              <p><strong>Tipo:</strong> {caixa.tipo_cabo}</p>
+              <p><strong>Tipo:</strong> {caixa.tipo_nome}</p>
               <p><strong>Quantidade:</strong> {caixa.quantidade_atual}/{caixa.quantidade_inicial}</p>
               <p><strong>Status:</strong> {caixa.status}</p>
+              <p><a href={`${API_BASE}/caixas/${caixa.id}/qrcode`} target="_blank" rel="noopener noreferrer">QR Code</a></p>
             </div>
           ))}
         </div>
