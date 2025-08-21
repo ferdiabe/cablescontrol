@@ -35,6 +35,15 @@ services:
     networks:
       - iot-network
 
+  label-print-server:
+    build: ./print-server
+    container_name: label-print-server
+    restart: unless-stopped
+    networks:
+      - iot-network
+    ports:
+      - "8000:8000"
+
 networks:
   iot-network:
     external: true
